@@ -13,7 +13,7 @@ module lzma_range_coder (
     
     output wire        o_valid,
     output wire [ 7:0] o_data,
-    output wire        o_end
+    output wire        o_last
 );
 
 
@@ -671,14 +671,14 @@ reg        last_dummy_norm = 1'b0;
 
 reg        e_valid = 1'b0;
 reg [ 7:0] e_byte  = 8'h00;
-reg        e_end   = 1'b0;
+reg        e_last  = 1'b0;
 
 always @ (posedge clk or negedge rstn)
     if (~rstn) begin
         last_dummy_norm <= 1'b0;
         e_valid  <= 1'b0;
         e_byte   <= 8'h0;
-        e_end    <= 1'b0;
+        e_last   <= 1'b0;
         low      <= 33'h0;
         range    <= 32'hFFFFFFFF;
         cache    <= 8'h0;
@@ -687,7 +687,7 @@ always @ (posedge clk or negedge rstn)
     end else begin
         e_valid  <= 1'b0;
         e_byte   <= 8'h0;
-        e_end    <= 1'b0;
+        e_last   <= 1'b0;
         
         case (rc_state)
             S_RC_IDLE :
@@ -711,7 +711,8 @@ always @ (posedge clk or negedge rstn)
                         if (d_btype == BTYPE_INIT_PROB) begin
                             cache <= 8'h0;
                             csize <= 32'h0;
-                            e_end <= last_dummy_norm;
+                            e_valid <= last_dummy_norm;
+                            e_last  <= last_dummy_norm;
                         end
                     end
                 end
@@ -750,7 +751,7 @@ always @ (posedge clk)
 
 assign o_valid = e_valid;
 assign o_data  = e_byte;
-assign o_end   = e_end;
+assign o_last  = e_last;
 
 
 endmodule

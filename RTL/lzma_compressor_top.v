@@ -10,7 +10,7 @@ module lzma_compressor_top (
     // output : LZMA stream  // Note! need to add an additional 13-byte fixed header before the output stream to make up a complete "LZMA" file format. The 13 bytes are : {0x5E, 0x00, 0x00, 0x02, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
     output wire        o_valid,
     output wire [ 7:0] o_data,
-    output wire        o_end    // end of a LZMA stream
+    output wire        o_last   // end of a LZMA stream
 );
 
     
@@ -85,25 +85,25 @@ lzma_range_coder u_lzma_range_coder (
     .i_dist_or_bytes ( b_dist_or_bytes     ),
     .o_valid         ( o_valid             ),
     .o_data          ( o_data              ),
-    .o_end           ( o_end               )
+    .o_last          ( o_last              )
 );
 
 
-/*tb_lzma_search_compare u_tb_lzma_search_compare (         // only for simulation
-    .clk             ( clk                 ),
-    .i_valid         ( i_valid & i_ready   ),
-    .i_last          ( i_last              ),
-    .i_byte          ( i_data              ),
-    .o_valid         ( a_valid & a_ready   ),
-    .o_last          ( a_last              ),
-    .o_pos           ( a_pos               ),
-    .o_type          ( a_type              ),
-    .o_byte          ( a_byte              ),
-    .o_prevbyte      ( a_prevbyte          ),
-    .o_matchbyte     ( a_matchbyte         ),
-    .o_len           ( a_len               ),
-    .o_dist          ( a_dist              )
-);*/
+//tb_lzma_search_compare u_tb_lzma_search_compare (         // only for simulation
+//    .clk             ( clk                 ),
+//    .i_valid         ( i_valid & i_ready   ),
+//    .i_last          ( i_last              ),
+//    .i_byte          ( i_data              ),
+//    .o_valid         ( a_valid & a_ready   ),
+//    .o_last          ( a_last              ),
+//    .o_pos           ( a_pos               ),
+//    .o_type          ( a_type              ),
+//    .o_byte          ( a_byte              ),
+//    .o_prevbyte      ( a_prevbyte          ),
+//    .o_matchbyte     ( a_matchbyte         ),
+//    .o_len           ( a_len               ),
+//    .o_dist          ( a_dist              )
+//);
 
 
 endmodule

@@ -9,7 +9,7 @@ module tb_save_result_to_file (
     // input : AXI-stream
     input  wire        tvalid,
     input  wire [ 7:0] tdata,
-    input  wire        tend
+    input  wire        tlast
 );
 
 
@@ -41,10 +41,11 @@ always @ (posedge clk)
         
         $fwrite(fptr, "%c", tdata);
         
-    end else if (tend) begin
-        $display("close %10s", fname);
-        $fclose(fptr);
-        fptr = 0;
+        if (tlast) begin
+            $display("close %10s", fname);
+            $fclose(fptr);
+            fptr = 0;
+        end
     end
 
 

@@ -1,5 +1,5 @@
 
-`define FILE_COUNT 10
+`define FILE_COUNT 20
 
 
 module tb_random_data_source (
@@ -204,11 +204,8 @@ initial begin
     repeat (1000) @ (posedge clk);
     
     repeat (`FILE_COUNT) begin
-        case ( randuint(0,2) )
-            2 : begin  stream_len=randuint(1    , 100   );   bubble_cnt = randuint(0,6);  end
-            1 : begin  stream_len=randuint(100  , 10000 );   bubble_cnt = randuint(0,6);  end
-            0 : begin  stream_len=randuint(10000, 500000);   bubble_cnt = randuint(0,0);  end
-        endcase
+        stream_len = randuint(1, 2000000);
+        bubble_cnt = randuint(0, 5);
         
         cycle_start = cycle_count;
         gen_stream(stream_len, bubble_cnt);

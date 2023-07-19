@@ -38,15 +38,14 @@ reg  [  17-1:0] hash_tab7 [4095:0];
 
 
 
-// ------ptr---ptr284---wptr--ptr484----------
+// ------ptr---ptr300---wptr--ptr480----------
 //        |__284__|
 //        |__________484________|
 //
 reg  [17-1:0] wptr = 17'h0;
 reg  [17-1:0] ptr  = 17'h0;
-wire [17-1:0] ptr284 = ptr + 17'd284;
-wire [17-1:0] ptr484 = ptr + 17'd484;
-wire [17-1:0] ptr3   = ptr + 17'd3;
+wire [17-1:0] ptr300 = ptr + 17'd300;
+wire [17-1:0] ptr480 = ptr + 17'd480;
 
 localparam [1:0] S_I_IDLE = 2'd0,
                  S_I_RUN  = 2'd1,
@@ -54,25 +53,23 @@ localparam [1:0] S_I_IDLE = 2'd0,
 reg        [1:0] state_i  = S_I_IDLE;
 
 assign i_ready         = (state_i==S_I_IDLE) ? 1'b1                          :
-                         (state_i==S_I_RUN ) ? ((ptr484 - wptr) < 17'h10000) :
+                         (state_i==S_I_RUN ) ? ((ptr480 - wptr) < 17'h10000) :
                        /*(state_i==S_I_END )*/ 1'b0                          ;
 
 wire process_available = (state_i==S_I_IDLE) ? 1'b0                          :
-                         (state_i==S_I_RUN ) ? ((wptr - ptr284) < 17'h10000) :
+                         (state_i==S_I_RUN ) ? ((wptr - ptr300) < 17'h10000) :
                        /*(state_i==S_I_END )*/ (wptr != ptr)                 ;
 
 localparam [3:0] S_IDLE      = 4'd0,
-                 S_LOAD2     = 4'd1,
-                 S_LOAD3     = 4'd2,
+                 S_LOAD1     = 4'd1,
+                 S_LOAD2     = 4'd2,
                  S_GETHASH   = 4'd3,
-                 S_GETHASH2  = 4'd4,
-                 S_MATCH_PRE = 4'd5,
-                 S_MATCH     = 4'd6,
-                 S_INC       = 4'd7,
-                 S_SUBMIT    = 4'd8,
-                 S_FORWARD1  = 4'd9,
-                 S_FORWARD2  = 4'd10,
-                 S_MATCH_WAIT= 4'd11;
+                 S_MATCH_PRE = 4'd4,
+                 S_MATCH     = 4'd5,
+                 S_MATCH_WAIT= 4'd6,
+                 S_SUBMIT    = 4'd7,
+                 S_FORWARD1  = 4'd8,
+                 S_FORWARD2  = 4'd9;
 reg        [3:0] state       = S_IDLE;
 
 reg              state_is_s_match = 1'b0;
@@ -139,11 +136,13 @@ always @ (posedge clk)                                             // write ring
 
 
 
+reg            sdata_en = 1'b0;
+
+reg  [8*8-1:0] sdata;
+
 reg  [3*8-1:0] pdata;
 reg  [4*8-1:0] cdata;
 reg  [3*8-1:0] ndata;
-
-reg  [3*8-1:0] sdata;
 
 reg  [  8-1:0] matchbyte = 8'h0;
 reg  [  8-1:0] prevbyte  = 8'h0;
@@ -288,10 +287,28 @@ end
 wire [17-1:0] paddr0   = ptr - pdist[0];
 wire [17-1:0] paddr1   = ptr - pdist[1];
 wire [17-1:0] paddridx = ptr - pdist[idx+4'd1];
+wire [17-1:0] paddridx2= ptr - pdist[idx+4'd2];
+
+
+reg  pvalid11;               // not real register
+always @ (*) begin
+    pvalid11 = pvalid[11];
+    if (epoch == 7'd0) begin
+        case (paddrlsbrr)
+            2'd0    : if (rdata_r        != tdata_r       ) pvalid11 = 1'b0;
+            2'd1    : if (rdata_r[31: 8] != tdata_r[31: 8]) pvalid11 = 1'b0;
+            2'd2    : if (rdata_r[31:16] != tdata_r[31:16]) pvalid11 = 1'b0;
+            default : if (rdata_r[31:24] != tdata_r[31:24]) pvalid11 = 1'b0;
+        endcase
+    end else begin
+        if (rdata_r != tdata_r) pvalid11 = 1'b0;
+    end
+end 
 
 
 always @ (posedge clk or negedge rstn)
     if (~rstn) begin
+        sdata_en <= 1'b0;
         {pdata, cdata, ndata, sdata} <= 0;
         matchbyte <= 8'h0;
         prevbyte  <= 8'h0;
@@ -315,6 +332,7 @@ always @ (posedge clk or negedge rstn)
         epoch    <= 0;
     end else begin
         if (state_i == S_I_IDLE) begin
+            sdata_en <= 1'b0;
             {pdata, cdata, ndata, sdata} <= 0;
             matchbyte <= 8'h0;
             prevbyte  <= 8'h0;
@@ -346,44 +364,33 @@ always @ (posedge clk or negedge rstn)
                     shortrep <= 0;
                     pvalid   <= 0;
                     if (process_available) begin
-                        caddr <= caddr + 15'd1;
-                        raddr <= caddr + 15'd1;
-                        state <= S_LOAD2;
+                        sdata_en <= 1'b1;
+                        raddr <= ptr[16:2] + 15'd1;
+                        caddr <= ptr[16:2] + 15'd1;
+                        if (~sdata_en) begin
+                            state <= S_LOAD1;
+                        end else begin
+                            state <= S_GETHASH;
+                            if (ptr[1:0] != 2'h0)
+                                caddr <= ptr[16:2] + 15'd2;
+                        end
                     end
                     idx      <= 0;
                     epoch    <= 0;
                 end
                 
-                S_LOAD2 : begin
-                    case (ptr[1:0])
-                        2'd0    : begin cdata <= rdata;         sdata <= rdata[23:0];            end
-                        2'd1    : begin cdata <= rdata >> 8;    sdata <= rdata[31:8];            end
-                        2'd2    : begin cdata <= rdata >> 16;   sdata <= {8'h0, rdata[31:16]};   end
-                        default : begin cdata <= rdata >> 24;   sdata <= {16'h0, rdata[31:24]};  end
-                    endcase
-                    
-                    if (ptr[1:0] != 2'd0) begin
-                        caddr <= caddr + 15'd1;
-                        raddr <= caddr + 15'd1;
-                        state <= S_LOAD3;
-                    end else
-                        state <= S_GETHASH;
+                S_LOAD1 : begin
+                    sdata[31: 0] <= rdata;
+                    state <= S_LOAD2;
                 end
                 
-                S_LOAD3 : begin
-                    case (ptr[1:0])
-                        2'd1    : begin   {ndata, cdata[31:24]} <= rdata;                                  end
-                        2'd2    : begin   {ndata, cdata[31:16]} <= rdata;   sdata[23:16] <= rdata[ 7:0];   end
-                        default : begin   {ndata, cdata[31:8 ]} <= rdata;   sdata[23:8 ] <= rdata[15:0];   end // 2'd3
-                    endcase
-                    
+                S_LOAD2 : begin
+                    sdata[63:32] <= rdata;
                     state <= S_GETHASH;
                 end
                 
-                S_GETHASH :
-                    state <= S_GETHASH2;
-                
-                S_GETHASH2 : begin
+                S_GETHASH : begin
+                    {ndata, cdata} <= sdata[55:0];
                     pvalid <= 12'h0;
                     
                     for (i=0; i<8; i=i+1) begin
@@ -414,15 +421,18 @@ always @ (posedge clk or negedge rstn)
                 end
                 
                 S_MATCH : begin                                           // idx = 1~11~0
-                    if (idx > 4'd0 && idx < 4'd11) begin                  // idx = 1~10
-                        raddr <= paddridx[16:2] + {8'd0, epoch};          // paddr[idx+1][16:2];
-                        idx   <= idx + 4'd1;
-                    end else if (idx == 4'd11) begin                      // idx = 11
-                        raddr <= caddr;
-                        idx   <= 4'd0;
-                    end else begin                                        // idx = 0
+                    if (idx == 4'd0) begin
                         raddr <= caddr;
                         state <= S_MATCH_WAIT;
+                    end else if (idx >= 4'd11) begin
+                        raddr <= caddr;
+                        idx   <= 4'd0;
+                    end else if (idx == 4'd7 || idx == 4'd10 || pvalid[idx+4'd1]) begin
+                        raddr <= paddridx[16:2] + {8'd0, epoch};
+                        idx   <= idx + 4'd1;
+                    end else begin
+                        raddr <= paddridx2[16:2] + {8'd0, epoch};
+                        idx   <= idx + 4'd2;
                     end
                     
                     if (state_is_s_match) begin
@@ -462,28 +472,17 @@ always @ (posedge clk or negedge rstn)
                 end
                 
                 S_MATCH_WAIT : begin
-                    state <= S_INC;
-                    
-                    if (epoch == 7'd0) begin
-                        case (paddrlsbrr)
-                            2'd0    : if (rdata_r        != tdata_r       ) pvalid[idxrr] <= 1'b0;
-                            2'd1    : if (rdata_r[31: 8] != tdata_r[31: 8]) pvalid[idxrr] <= 1'b0;
-                            2'd2    : if (rdata_r[31:16] != tdata_r[31:16]) pvalid[idxrr] <= 1'b0;
-                            default : if (rdata_r[31:24] != tdata_r[31:24]) pvalid[idxrr] <= 1'b0;
-                        endcase
-                    end else begin
-                        if (rdata_r != tdata_r) pvalid[idxrr] <= 1'b0;
-                    end
+                    pvalid[11] <= pvalid11;
                     
                     if (pvalidrr && tscore > score) begin
                         score    <= tscore;
                         length   <= tlength_r;
                         distance <= pdistrr;
-                        best_idx <= idxrr;
+                        best_idx <= 4'd11;
                     end
-                end
+                //end
                 
-                S_INC : begin
+                //S_INC : begin
                     pdata <= cdata[31:8];
                     case (ptr[1:0])
                         2'd0    : {ndata, cdata} <= {24'h0, rdata             };
@@ -501,15 +500,18 @@ always @ (posedge clk or negedge rstn)
                         length   <= 9'd1;
                         distance <= 0;
                         best_idx <= 4'hF;
+                        raddr <= ptr[16:2] + 15'd2;
                         state <= S_SUBMIT;
-                    end else if (epoch<7'd67 && pvalid!=12'h0)          // continue for LZ search
+                    end else if (epoch>=7'd67 || ({pvalid11,pvalid[10:0]}==12'h0)) begin   // done LZ search
+                        raddr <= ptr[16:2] + 15'd2;
+                        state <= S_SUBMIT;
+                    end else begin                                      // continue for LZ search
                         state <= S_MATCH_PRE;
-                    else                                                // done LZ search
-                        state <= S_SUBMIT;
+                    end
                 end
                 
                 S_SUBMIT : begin
-                    raddr <= ptr3[16:2];
+                    raddr <= ptr[16:2] + 15'd2;
                     if (o_ready) begin
                         {pdist[8], pdist[9], pdist[10], pdist[11]} <=
                             (best_idx <  4'd8) ? {distance , pdist[8], pdist[9] , pdist[10]} :   // MATCH
@@ -520,7 +522,9 @@ always @ (posedge clk or negedge rstn)
                         
                         if (best_idx <= 4'd11) rep0valid <= 1'b1;
                         
-                        state <= S_FORWARD1;
+                        ptr    <= ptr + 17'd1;
+                        length <= length - 9'd1;
+                        state  <= S_FORWARD2;
                     end
                 end
                 
@@ -532,19 +536,18 @@ always @ (posedge clk or negedge rstn)
                 
                 default :  begin // S_FORWARD2 : begin
                     case (ptr[1:0])
-                        2'd0    : sdata <= {rdata[23:16], sdata[23:8]};
-                        2'd1    : sdata <= {rdata[31:24], sdata[23:8]};
-                        2'd2    : sdata <= {rdata[ 7: 0], sdata[23:8]};
-                        default : sdata <= {rdata[15: 8], sdata[23:8]};
+                        2'd0    : sdata <= {rdata[31:24], sdata[63:8]};
+                        2'd1    : sdata <= {rdata[ 7: 0], sdata[63:8]};
+                        2'd2    : sdata <= {rdata[15: 8], sdata[63:8]};
+                        default : sdata <= {rdata[23:16], sdata[63:8]};
                     endcase
                     
                     prevbyte <= sdata[7:0];
                     
                     if (length > 9'd0) begin
-                        raddr <= ptr3[16:2];
+                        raddr <= ptr[16:2] + 15'd2;
                         state <= S_FORWARD1;
                     end else begin
-                        caddr <= ptr[16:2];
                         raddr <= ptr[16:2];
                         state <= S_IDLE;
                     end
